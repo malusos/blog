@@ -35,7 +35,7 @@ In this blog post, we will outline the LLM deployment steps that include model e
 
 ## Pre-requisites
 
-Python and C++ environments are required to run the examples below.
+Seting up the Python and C++ environments are required to run the examples below.
 
 To install packages on the Python environment, use the following command.
 ```sh
