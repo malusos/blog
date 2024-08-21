@@ -43,12 +43,13 @@ pip install --upgrade --upgrade-strategy eager "optimum[openvino]"
 ```
 
 The following Python packages were used to reproduce the results in this blog post.
-- transformers==4.44
-- openvino==24.3
-- openvino-tokenizers==24.3
-- optimum-intel==1.20
-- lm-eval==0.4.3
-
+```
+transformers==4.44
+openvino==24.3
+openvino-tokenizers==24.3
+optimum-intel==1.20
+lm-eval==0.4.3
+```
 For GenAI C++ libraries installation follow the instruction [here](https://docs.openvino.ai/2024/get-started/install-openvino/install-openvino-genai.html).
 
 
