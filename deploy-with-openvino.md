@@ -53,9 +53,9 @@ lm-eval==0.4.3
 For GenAI C++ libraries installation follow the instruction [here](https://docs.openvino.ai/2024/get-started/install-openvino/install-openvino-genai.html).
 
 
-## Exporting model from 🤗 Transformers to OpenVINO
+## Exporting model from HuggingFace (🤗) Transformers to OpenVINO
 
-🤗 and Intel have a long story of collaboration and [Optimum-Intel](https://huggingface.co/docs/optimum/en/intel/index) project is a part of this story. It is designed to optimize Transformers models for inference on Intel HW. Optimum-Intel supports OpenVINO as an inference backend and its API has wrappers for various model architectures built on top of OpenVINO inference API. All of these wrappers start from `OV` prefix, for example, `OVModelForCausalLM`. Otherwise, it is similar to the API of 🤗 Transformers library.
+HuggingFace (🤗) and Intel have a long story of collaboration and [Optimum-Intel](https://huggingface.co/docs/optimum/en/intel/index) project is a part of this story. It is designed to optimize Transformers models for inference on Intel HW. Optimum-Intel supports OpenVINO as an inference backend and its API has wrappers for various model architectures built on top of OpenVINO inference API. All of these wrappers start from `OV` prefix, for example, `OVModelForCausalLM`. Otherwise, it is similar to the API of 🤗 Transformers library.
 
 To export 🤗 Transformers model to OpenVINO IR one can use two options: `.from_pretrained()` API method of the Optimum-Intel class in a Python script or do it with Optimum the command-line interface (CLI).
 Further, we will use the recent Llama 3.1 8B decoder model as an example.
