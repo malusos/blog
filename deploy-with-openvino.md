@@ -25,40 +25,44 @@ authors:
 
 # Optimize and deploy 🤗 Transformer models with Optimum-Intel and OpenVINO GenAI
 
-When it comes to the edge or client deployment of the Transformers models, Python is not always the most preferrable solution for this purpose. Many applications, especially in Windows, are written in C++ and require model inference API to be also in C++. Another aspect of such deployment is the application footprint, which also should be minimized to simplify software installation and update processes. [OpenVINO&trade; Toolkit](https://docs.openvino.ai/) initially emerged as a C++ AI inference solution that has bindings to popular programming languages such as Python or Java. It continues to be popular for edge and client deployment with the minimum dependencies on 3rd party software libraries.
+Deploying Transformer models at the edge or client-side requires careful consideration of performance and compatibility. Python, though powerful, is not always ideal for such deployments, especially in environments dominated by C++. This blog will guide you through optimizing and deploying Hugging Face Transformer models using Optimum-Intel and OpenVINO™ GenAI, ensuring efficient AI inference with minimal dependencies.
 
-Recently, OpenVINO introduced [Generative AI (GenAI) API](https://docs.openvino.ai/2024/learn-openvino/llm_inference_guide/genai-guide.html) to simplify integration of GenAI model inference into C++ (or Python) application with the minimum external dependencies. LLM inference is the first feature in GenAI API that is currently enabled. OpenVINO GenAI software package is supplied with [OpenVINO Tokenizers](https://docs.openvino.ai/2024/learn-openvino/llm_inference_guide/ov-tokenizers.html), a library required for text tokenization-detokenization which is lightweight and has C++ API as well. GenAI repository also contains various [use case examples](https://github.com/openvinotoolkit/openvino.genai/tree/master/samples): from naive LLM decoder-based inference to speculative decoding.
+## Table of Contents
+1. Why Use OpenVINO™ for Edge Deployment
+2. Step 1: Setting Up the Environment
+3. Step 2: Exporting Models to OpenVINO IR
+4. Step 3: Model Optimization
+5. Step 4: Deploying with OpenVINO GenAI API
+6. Conclusion
 
-In this blog post, we will outline the LLM deployment steps that include model exportation from Transformers library to OpenVINO Intermediate Representation (IR) using [Optimum-Intel](https://huggingface.co/docs/optimum/en/intel/index), model optimization with [Neural Network Compression Framework (NNCF)](https://github.com/openvinotoolkit/nncf), and software deployment with new GenAI API. We will guide the user through all these steps and highlight changes of basic model KPIs, namely accuracy and performance.
+## Why Use OpenVINO™ for Edge Deployment
+OpenVINO™ was originally developed as a C++ AI inference solution, making it ideal for edge and client deployment where minimizing dependencies is crucial. With the introduction of the GenAI API, integrating large language models (LLMs) into C++ or Python applications has become even more straightforward, with features designed to simplify deployment and enhance performance.
 
-![OpenVINO GenAI workflow diagram](/blog/assets/deploy-with-openvino/openvino_genai_workflow.png "OpenVINO GenAI workflow diagram")
+## Step 1: Setting Up the Environment
 
-## Pre-requisites
-
-Python and C++ environments are required to run the examples below.
-
-To install packages on the Python environment, use the following command.
+To start, ensure your environment is properly configured with both Python and C++. Install the necessary Python packages:
 ```sh
 pip install --upgrade --upgrade-strategy eager "optimum[openvino]"
 ```
 
-The following Python packages were used to reproduce the results in this blog post.
-- transformers==4.44
-- openvino==24.3
-- openvino-tokenizers==24.3
-- optimum-intel==1.20
-- lm-eval==0.4.3
+Here are the specific packages used in this blog post:
+```
+transformers==4.44
+openvino==24.3
+openvino-tokenizers==24.3
+optimum-intel==1.20
+lm-eval==0.4.3
+```
 
 For GenAI C++ libraries installation follow the instruction [here](https://docs.openvino.ai/2024/get-started/install-openvino/install-openvino-genai.html).
 
 
-## Exporting model from 🤗 Transformers to OpenVINO
+## Step 2: Exporting Models to OpenVINO IR
 
-🤗 and Intel have a long story of collaboration and [Optimum-Intel](https://huggingface.co/docs/optimum/en/intel/index) project is a part of this story. It is designed to optimize Transformers models for inference on Intel HW. Optimum-Intel supports OpenVINO as an inference backend and its API has wrappers for various model architectures built on top of OpenVINO inference API. All of these wrappers start from `OV` prefix, for example, `OVModelForCausalLM`. Otherwise, it is similar to the API of 🤗 Transformers library.
+Hugging Face and Intel's collaboration has led to the [Optimum-Intel](https://huggingface.co/docs/optimum/en/intel/index) project. It is designed to optimize Transformers models for inference on Intel HW. Optimum-Intel supports OpenVINO as an inference backend and its API has wrappers for various model architectures built on top of OpenVINO inference API. All of these wrappers start from `OV` prefix, for example, `OVModelForCausalLM`. Otherwise, it is similar to the API of 🤗 Transformers library.
 
-To export 🤗 Transformers model to OpenVINO IR one can use two options: `.from_pretrained()` API method of the Optimum-Intel class in a Python script or do it with Optimum the command-line interface (CLI).
-Further, we will use the recent Llama 3.1 8B decoder model as an example.
-The export with the former option looks as follows:
+To export Transformer models to OpenVINO Intermediate Representation (IR) one can use two options: This can be done using Python’s .from_pretrained() method or the Optimum command-line interface (CLI). Below are examples using both methods:
+### Using Python API
 ```python
 from optimum.intel import OVModelForCausalLM
 
@@ -67,19 +71,20 @@ model = OVModelForCausalLM.from_pretrained(MODEL_ID, export=True)
 model.save_pretrained("./llam-3.1-8b-ov")
 ```
 
-Alternatively, the same can be done with CLI as follows:
+### Using Command Line Interface (CLI)
 ```sh
 optimum-cli export openvino -m meta-llama/Meta-Llama-3.1-8B ./llam-3.1-8b-ov
 ```
 
 The `./llam-3.1-8b-ov` folder will contain `.xml` and `bin` IR model files and required configuration files that come from the source model. 🤗 tokenizer will be also converted to the format of `openvino-tokenizers` library and corresponding configuration files will be created in the same folder.
 
-## Model Optimization
+## Step 3: Model Optimization
 
-When running LLMs on the resource constrained edge and client devices, model optimization is highly recommended step. And weight-only quantization is a mainstream approach that significantly reduces latency and model footprint. Optimum-Intel provides weight-only quantization capabilities by means of NNCF which has a variety of optimization techniques designed specifically for LLMs: from data-free INT8 and INT4 weight quantization to data-aware methods such as [AWQ](https://huggingface.co/docs/transformers/main/en/quantization/awq), [GPTQ](https://huggingface.co/docs/transformers/main/en/quantization/gptq), quantization scale estimation, mixed-precision quantization.
+When running LLMs on the resource constrained edge and client devices, model optimization is highly recommended step. Weight-only quantization is a mainstream approach that significantly reduces latency and model footprint. Optimum-Intel offers weight-only quantization through the Neural Network Compression Framework (NNCF), which has a variety of optimization techniques designed specifically for LLMs: from data-free INT8 and INT4 weight quantization to data-aware methods such as [AWQ](https://huggingface.co/docs/transformers/main/en/quantization/awq), [GPTQ](https://huggingface.co/docs/transformers/main/en/quantization/gptq), quantization scale estimation, mixed-precision quantization.
 By default, weights of the models that are larger than one billion parameters are quantized to INT8 precision which is safe in terms of accuracy. It means that the export steps described above lead to the model with 8-bit weights. However, 4-bit integer weight-only quantization allows achieving a better accuracy-performance trade-off. 
 
 For `meta-llama/Meta-Llama-3.1-8B` model we recommend stacking AWQ, quantization scale estimation along with mixed-precision INT4/INT8 quantization of weights using a calibration dataset that reflects a deployment use case. As in the case of export, there are two options on how to apply 4-bit weight-only quantization to LLM model:
+### Using Python API
 - Specify `quantization_config` parameter in the `.from_pretrained()` method. In this case `OVWeightQuantizationConfig` object should be created and set to this parameter as follows:
 ```pythonTransformers
 from optimum.intel import OVModelForCausalLM, OVWeightQuantizationConfig
@@ -90,7 +95,7 @@ model = OVModelForCausalLM.from_pretrained(MODEL_ID, export=True, quantization_c
 model.save_pretrained("./llam-3.1-8b-ov")
 ```
 
-- Use command-line options to enable 4-bit weight-only quantization:
+### Using Command Line Interface (CLI):
 ```sh
 optimum-cli export openvino -m meta-llama/Meta-Llama-3.1-8B --weight-format int4 --awq --scale-estimation --group-size 64 --dataset wikitext2 ./llam-3.1-8b-ov
 ```
@@ -105,9 +110,11 @@ Weight quantization usually introduces some degradation of the accuracy metric. 
 | :--------------------------- | :--------------: | :-----------: | :-----------: |
 | meta-llama/Meta-Llama-3.1-8B |   7.3366         | 7.3463        | 7.8288        | 
 
-## Deploy model with OpenVINO GenAI API
+## Step 4: Deploying with OpenVINO GenAI API
 
-Now, we have successfully converted and optimized Llama-3.1-8B model. Let's first run it with Python API of OpenVINO GenAI as the easiest path from 🤗 Optimum-Intel. The basic concept of this API is `LLMPipeline` class. Its instance can be created directly from the folder with the converted model. It will automatically load the main model, tokenizer, detokenizer, and the default generation configuration. The simple greedy-search text generation example with the Python version of `LLMPipeline` looks as follows:
+After conversion and optimization, deploying the model using OpenVINO GenAI is straightforward. The LLMPipeline class in OpenVINO GenAI provides both Python and C++ APIs, supporting various text generation methods with minimal dependencies.
+
+### Python API Example
 ```python
 import argparse
 import openvino_genai
@@ -123,7 +130,7 @@ To run this example you need minimum dependencies to be installed into the Pytho
 ```sh
 pip install openvino-genai==24.3
 ```
-
+### C++ API Example
 Let's see how to run the same pipilene with OpenVINO GenAI C++ API. The GenAI API is designed to be intuitive and provides a seamless migration from 🤗 Transformers API. 
 ```cpp
 #include "openvino/genai/llm_pipeline.hpp"
@@ -136,7 +143,7 @@ int main(int argc, char* argv[]) {
    std::cout << pipe.generate("What is LLM model?", ov::genai::max_new_tokens(256));
 }
 ```
-
+### Customizing Generation Config
 `LLMPipeline` also allows specifying custom generation options by means of `ov::genai::GenerationConfig`:
 ```cpp
 ov::genai::GenerationConfig config;
@@ -162,9 +169,24 @@ auto streamer = [](std::string subword) {
 pipe.generate(prompt, config, streamer);
 ```
 
-You can find more details in this [tutorial](https://docs.openvino.ai/2024/learn-openvino/llm_inference_guide/genai-guide.html).
 
-To build the C++ examples above refer to this [document](https://github.com/openvinotoolkit/openvino.genai/blob/releases/2024/3/src/docs/BUILD.md).
 
+## Conclusion
+The combination of Optimum-Intel and OpenVINO™ GenAI offers a powerful, flexible solution for deploying Hugging Face models at the edge. By following these steps, you can achieve optimized, high-performance AI inference in environments where Python may not be ideal, ensuring your applications run smoothly across Intel hardware.
+
+## Additional Resources
+1. You can find more details in this [tutorial](https://docs.openvino.ai/2024/learn-openvino/llm_inference_guide/genai-guide.html).
+2. To build the C++ examples above refer to this [document](https://github.com/openvinotoolkit/openvino.genai/blob/releases/2024/3/src/docs/BUILD.md).
+3. [OpenVINO Documentation] (docs.openvino.ai)
+4. [Jupyter Notebooks] (https://docs.openvino.ai/2024/learn-openvino/interactive-tutorials-python.html)
+
+## About the Authors
+Raymond Lo, currently based in Silicon Valley, is the global lead of Intel's AI evangelist team, focusing on the OpenVINO™ Toolkit. With a diverse background that includes founding the augmented reality company Meta, Raymond has also held key roles at Samsung NEXT and Google Cloud AI. His work spans startup entrepreneurship and enterprise innovation, with a strong presence in global conferences like TED Talks and SIGGRAPH.
+
+## Notices & Disclaimers
+Intel technologies may require enabled hardware, software, or service activation.
+No product or component can be absolutely secure.
+Your costs and results may vary.
+© Intel Corporation. Intel, the Intel logo, and other Intel marks are trademarks of Intel Corporation or its subsidiaries. Other names and brands may be claimed as the property of others.
 
 ![OpenVINO GenAI C++ chat demo](/blog/assets/deploy-with-openvino/demo.gif "OpenVINO GenAI C++ chat demo")
